@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+.nuget/
+
+# Rider / Visual Studio
+.vs/
+.idea/
+*.user
+
+# Dotnet CLI telemetry
+.dotnet/
+
+# OS
+.DS_Store
+Thumbs.db

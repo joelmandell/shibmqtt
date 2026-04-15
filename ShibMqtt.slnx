@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ShibMqtt.Broker/ShibMqtt.Broker.csproj" />
+    <Project Path="src/ShibMqtt.Client/ShibMqtt.Client.csproj" />
+    <Project Path="src/ShibMqtt.Core/ShibMqtt.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ShibMqtt.Tests/ShibMqtt.Tests.csproj" />
+  </Folder>
+</Solution>
