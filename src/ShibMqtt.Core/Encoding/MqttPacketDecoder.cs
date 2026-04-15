@@ -365,11 +365,11 @@ public static class MqttPacketDecoder
             return;
         }
 
-        var owner = MemoryPool<byte>.Shared.Rent(len);
-        var mem = owner.Memory[..len];
-        reader.TryCopyTo(mem.Span);
+        // Copy to a plain array so ownership is unambiguous and the pool slot is not leaked.
+        // ReadBinaryData is only called for small CONNECT fields (will payload, password).
+        var bytes = new byte[len];
+        reader.TryCopyTo(bytes);
         reader.Advance(len);
-        // Intentionally not returning owner here – callers manage lifetime
-        value = mem;
+        value = bytes;
     }
 }

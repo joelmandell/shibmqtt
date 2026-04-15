@@ -99,12 +99,13 @@ public sealed class SubscriptionManager
     {
         if (packet is null || packet.Payload.IsEmpty)
         {
-            _retainedMessages.TryRemove(topic, out var old);
-            old?.Dispose();
+            _retainedMessages.TryRemove(topic, out var existing);
+            existing?.Dispose();
         }
         else
         {
-            var old = _retainedMessages.AddOrUpdate(topic, packet, (_, prev) =>
+            // AddOrUpdate: the updateValueFactory disposes the previous entry before replacing it.
+            _retainedMessages.AddOrUpdate(topic, packet, (_, prev) =>
             {
                 prev.Dispose();
                 return packet;
