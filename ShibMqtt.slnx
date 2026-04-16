@@ -5,6 +5,7 @@
     <Project Path="src/ShibMqtt.Core/ShibMqtt.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ShibMqtt.Benchmarks/ShibMqtt.Benchmarks.csproj" />
     <Project Path="tests/ShibMqtt.Tests/ShibMqtt.Tests.csproj" />
   </Folder>
 </Solution>

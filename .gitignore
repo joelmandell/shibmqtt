@@ -14,6 +14,7 @@ obj/
 
 # Dotnet CLI telemetry
 .dotnet/
+BenchmarkDotNet.Artifacts/
 
 # OS
 .DS_Store

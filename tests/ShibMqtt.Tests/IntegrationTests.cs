@@ -1,7 +1,9 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using ShibMqtt.Broker;
 using ShibMqtt.Client;
+using ShibMqtt.Core.Encoding;
 using ShibMqtt.Core.Packets;
 using ShibMqtt.Core.Protocol;
 
@@ -134,6 +136,52 @@ public class IntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public void SubscriptionManager_GetMatchingSubscribers_PicksHighestQosPerClient()
+    {
+        var mgr = new SubscriptionManager();
+        mgr.Subscribe("c1", [new TopicFilter { Topic = "sensors/#", MaxQos = MqttQualityOfService.AtMostOnce }]);
+        mgr.Subscribe("c1", [new TopicFilter { Topic = "sensors/temp", MaxQos = MqttQualityOfService.AtLeastOnce }]);
+
+        var matches = mgr.GetMatchingSubscribers("sensors/temp").ToList();
+
+        var match = Assert.Single(matches);
+        Assert.Equal("c1", match.ClientId);
+        Assert.Equal(MqttQualityOfService.AtLeastOnce, match.GrantedQos);
+    }
+
+    [Fact]
+    public void SubscriptionManager_GetMatchingSubscribers_SystemTopicsRequireExplicitSubscription()
+    {
+        var mgr = new SubscriptionManager();
+        mgr.Subscribe("wildcard", [new TopicFilter { Topic = "#", MaxQos = MqttQualityOfService.AtMostOnce }]);
+        mgr.Subscribe("system", [new TopicFilter { Topic = "$SYS/#", MaxQos = MqttQualityOfService.AtLeastOnce }]);
+
+        var matches = mgr.GetMatchingSubscribers("$SYS/broker").ToList();
+
+        var match = Assert.Single(matches);
+        Assert.Equal("system", match.ClientId);
+        Assert.Equal(MqttQualityOfService.AtLeastOnce, match.GrantedQos);
+    }
+
+    [Fact]
+    public void SubscriptionManager_Unsubscribe_RemovesOnlyRequestedFilter()
+    {
+        var mgr = new SubscriptionManager();
+        mgr.Subscribe("c1",
+        [
+            new TopicFilter { Topic = "sensors/#", MaxQos = MqttQualityOfService.AtMostOnce },
+            new TopicFilter { Topic = "alerts/#", MaxQos = MqttQualityOfService.AtLeastOnce },
+        ]);
+
+        mgr.Unsubscribe("c1", ["sensors/#"]);
+
+        Assert.Empty(mgr.GetMatchingSubscribers("sensors/temp"));
+
+        var remaining = Assert.Single(mgr.GetMatchingSubscribers("alerts/high"));
+        Assert.Equal("c1", remaining.ClientId);
+    }
+
+    [Fact]
     public void SubscriptionManager_RetainedMessages_StoredAndRetrieved()
     {
         var mgr = new SubscriptionManager();
@@ -152,8 +200,78 @@ public class IntegrationTests : IAsyncDisposable
         Assert.Equal(payload, retained[0].Payload.ToArray());
     }
 
+    [Fact]
+    public async Task Broker_ReconnectWithPersistentSubscriptions_SetsSessionPresent()
+    {
+        var ep = await StartBrokerAsync();
+
+        await using (var client = new MqttClient(new MqttClientOptions
+        {
+            ClientId = "persistent-client",
+            Host = "127.0.0.1",
+            Port = ep.Port,
+            CleanSession = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+        }))
+        {
+            var ct = TestTimeout();
+            await client.ConnectAsync(ct);
+            await client.SubscribeAsync(
+                [new TopicFilter { Topic = "sensors/#", MaxQos = MqttQualityOfService.AtLeastOnce }],
+                ct);
+            await client.DisconnectAsync(ct);
+            await Task.Delay(100, ct);
+        }
+
+        var connAck = await ConnectAndReadConnAckAsync(ep, "persistent-client", cleanSession: false, TestTimeout());
+
+        Assert.True(connAck.SessionPresent);
+        Assert.Equal(MqttConnectReturnCode.Accepted, connAck.ReturnCode);
+    }
+
     private static CancellationToken TestTimeout(int seconds = 10)
         => new CancellationTokenSource(TimeSpan.FromSeconds(seconds)).Token;
+
+    private static async Task<ConnAckPacket> ConnectAndReadConnAckAsync(
+        IPEndPoint endpoint,
+        string clientId,
+        bool cleanSession,
+        CancellationToken cancellationToken)
+    {
+        using var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+        {
+            NoDelay = true,
+        };
+        await socket.ConnectAsync(endpoint, cancellationToken);
+
+        using var stream = new NetworkStream(socket, ownsSocket: false);
+        var buffer = new ArrayBufferWriter<byte>(128);
+        MqttPacketEncoder.Encode(buffer, new ConnectPacket
+        {
+            ClientId = clientId,
+            CleanSession = cleanSession,
+            KeepAlive = 30,
+        });
+
+        await stream.WriteAsync(buffer.WrittenMemory, cancellationToken);
+
+        byte[] connAckBytes = new byte[4];
+        int read = 0;
+        while (read < connAckBytes.Length)
+        {
+            int bytesRead = await stream.ReadAsync(connAckBytes.AsMemory(read), cancellationToken);
+            if (bytesRead == 0)
+                throw new IOException("Connection closed before CONNACK.");
+
+            read += bytesRead;
+        }
+
+        var sequence = new ReadOnlySequence<byte>(connAckBytes);
+        var reader = new SequenceReader<byte>(sequence);
+        Assert.True(MqttPacketDecoder.TryDecode(ref reader, out var decoded));
+        Assert.Equal(MqttPacketType.ConnAck, decoded.PacketType);
+        return decoded.AsConnAck();
+    }
 
     public async ValueTask DisposeAsync() => await _broker.DisposeAsync();
 }

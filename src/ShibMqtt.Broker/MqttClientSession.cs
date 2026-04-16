@@ -221,9 +221,7 @@ public sealed class MqttClientSession : IAsyncDisposable
         _keepAlive = connect.KeepAlive;
         _cleanSession = connect.CleanSession;
 
-        var returnCode = _broker.OnClientConnecting(this, connect);
-        bool sessionPresent = !connect.CleanSession && returnCode == MqttConnectReturnCode.Accepted
-            && _broker.HasSession(_clientId);
+        var (returnCode, sessionPresent) = _broker.OnClientConnecting(this, connect);
 
         var connAck = new ConnAckPacket { SessionPresent = sessionPresent, ReturnCode = returnCode };
         await EnqueueAsync(w => MqttPacketEncoder.Encode(w, connAck), ct);

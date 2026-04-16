@@ -75,8 +75,12 @@ public sealed class MqttBroker : IAsyncDisposable
     //  Session lifecycle callbacks (called by MqttClientSession)
     // ──────────────────────────────────────────────────────────────
 
-    internal MqttConnectReturnCode OnClientConnecting(MqttClientSession session, ConnectPacket connect)
+    internal (MqttConnectReturnCode ReturnCode, bool SessionPresent) OnClientConnecting(
+        MqttClientSession session,
+        ConnectPacket connect)
     {
+        bool sessionPresent = !connect.CleanSession && SubscriptionManager.HasSubscriptions(connect.ClientId);
+
         // Disconnect existing session with the same client ID
         if (_sessions.TryRemove(connect.ClientId, out var existing))
         {
@@ -86,10 +90,8 @@ public sealed class MqttBroker : IAsyncDisposable
         _sessions[connect.ClientId] = session;
         _logger.LogInformation("Client connected: {ClientId}", connect.ClientId);
 
-        return MqttConnectReturnCode.Accepted;
+        return (MqttConnectReturnCode.Accepted, sessionPresent);
     }
-
-    internal bool HasSession(string clientId) => _sessions.ContainsKey(clientId);
 
     internal void OnSessionEnded(string clientId, bool cleanSession)
     {

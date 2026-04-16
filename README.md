@@ -21,6 +21,7 @@ src/
   ShibMqtt.Broker/   – TCP broker (session management, subscriptions, message dispatch)
   ShibMqtt.Client/   – TCP client (connect, publish, subscribe)
 tests/
+  ShibMqtt.Benchmarks/ – BenchmarkDotNet benchmarks for codec and broker hot paths
   ShibMqtt.Tests/    – Unit & integration tests (xUnit)
 ```
 
@@ -80,6 +81,18 @@ await client.DisconnectAsync();
 dotnet build ShibMqtt.slnx
 dotnet test  ShibMqtt.slnx
 ```
+
+## Benchmarks
+
+```sh
+dotnet run -c Release --project tests/ShibMqtt.Benchmarks/ShibMqtt.Benchmarks.csproj -- --filter *
+```
+
+Current benchmarks cover:
+
+- packet encode/decode throughput
+- subscription matching fanout
+- topic matcher wildcard behavior
 
 ## Supported MQTT Packets
 
